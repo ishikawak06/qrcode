@@ -9,8 +9,8 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com/3.4.16"></script>
-  <!-- QR Code generator -->
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <!-- QR Code generator (primary: cdnjs, fallback handled in JS) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" onerror="window._qrCdnFailed=true"></script>
   <!-- Lucide icons -->
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 
@@ -1410,16 +1410,25 @@ function generateQR(tbl) {
   const base = state.baseUrl.trim().replace(/\/$/, '');
   if (!base) return;
   const url = base + '#customer?table=' + tbl.id;
-  QRCode.toDataURL(url, {
-    width: 200, margin: 2,
-    color: { dark: '#1A1A18', light: '#FFFFFF' },
-    errorCorrectionLevel: 'M'
-  }, (err, dataUrl) => {
-    if (err) { console.error('QR error:', err); return; }
-    img.src = dataUrl;
-    img.style.width = '160px';
-    img.style.height = '160px';
-  });
+
+  // Primary: Google Charts API — zero JS dependency, works everywhere
+  const encoded = encodeURIComponent(url);
+  const googleQr = 'https://chart.googleapis.com/chart?cht=qr&chs=200x200&chl=' + encoded + '&choe=UTF-8&chld=M|1';
+  img.src = googleQr;
+  img.style.width = '160px';
+  img.style.height = '160px';
+  img.dataset.url = url; // store for download
+
+  // Fallback: if Google Charts blocked, try QRCode.js lib
+  img.onerror = () => {
+    if (typeof QRCode !== 'undefined') {
+      QRCode.toDataURL(url, { width: 200, margin: 2,
+        color: { dark: '#1A1A18', light: '#FFFFFF' }, errorCorrectionLevel: 'M'
+      }, (err, dataUrl) => {
+        if (!err) { img.src = dataUrl; img.onerror = null; }
+      });
+    }
+  };
 }
 
 function applyBaseUrl() {
@@ -1432,18 +1441,31 @@ function applyBaseUrl() {
   renderAdmin();
 }
 
-function downloadQR(tableId, tableNum) {
+async function downloadQR(tableId, tableNum) {
   const img = document.getElementById('qr-' + tableId);
-  if (!img || !img.src) { alert('QR belum ter-generate. Klik "Simpan & Generate QR" dulu.'); return; }
-  const link = document.createElement('a');
-  link.download = 'meja-' + tableNum + '-qr.png';
-  link.href = img.src;
-  link.click();
+  if (!img || !img.src || img.src === window.location.href) {
+    alert('QR belum ter-generate. Klik "Simpan & Generate QR" dulu.');
+    return;
+  }
+  try {
+    // Fetch image and create blob URL for download
+    const resp = await fetch(img.src);
+    const blob = await resp.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.download = 'meja-' + tableNum + '-qr.png';
+    link.href = blobUrl;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 3000);
+  } catch(e) {
+    // Fallback: open in new tab for manual save
+    window.open(img.src, '_blank');
+  }
 }
 
 function printQR(tableId, label) {
   const img = document.getElementById('qr-' + tableId);
-  if (!img || !img.src) { alert('QR belum ter-generate.'); return; }
+  if (!img || !img.src || img.src === window.location.href) { alert('QR belum ter-generate. Klik "Simpan & Generate QR" dulu.'); return; }
   const win = window.open('', '_blank');
   win.document.write(`
     <html><head><title>QR ${label}</title>
