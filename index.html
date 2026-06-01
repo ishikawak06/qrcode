@@ -1197,10 +1197,13 @@ function renderAdminTables() {
       ${tbl.capacity ? `<p class="text-xs" style="color:var(--muted)">${tbl.capacity} kursi</p>` : ''}
     </div>
     ${hasUrl
-      ? `<canvas id="qr-${tbl.id}" class="qr-canvas"></canvas>
+      ? `<img id="qr-${tbl.id}" class="qr-canvas" style="width:160px;height:160px;border-radius:10px;display:block" alt="QR">
          <p style="font-size:9px;color:var(--muted);word-break:break-all;text-align:center;line-height:1.4">${qrUrl}</p>
          <button class="btn btn-ghost btn-sm btn-full" onclick="downloadQR('${tbl.id}','${tbl.table_number}')">
            <i data-lucide="download" class="w-3.5 h-3.5"></i>Download QR
+         </button>
+         <button class="btn btn-outline btn-sm btn-full" onclick="printQR('${tbl.id}','Meja ${tbl.table_number}')">
+           <i data-lucide="printer" class="w-3.5 h-3.5"></i>Print QR
          </button>`
       : `<div style="width:160px;height:160px;border:2px dashed var(--border);border-radius:10px;display:flex;align-items:center;justify-content:center;padding:12px">
            <p style="font-size:11px;color:var(--muted);text-align:center">Isi URL Aplikasi dulu</p>
@@ -1402,13 +1405,20 @@ async function updateOrderStatus(orderId, newStatus) {
 
 // ── QR Code ──
 function generateQR(tbl) {
-  const canvas = document.getElementById('qr-' + tbl.id);
-  if (!canvas) return;
+  const img = document.getElementById('qr-' + tbl.id);
+  if (!img) return;
   const base = state.baseUrl.trim().replace(/\/$/, '');
   if (!base) return;
   const url = base + '#customer?table=' + tbl.id;
-  QRCode.toCanvas(canvas, url, { width: 160, margin: 1, color: { dark: '#1A1A18', light: '#FFFFFF' } }, err => {
-    if (err) console.error('QR error:', err);
+  QRCode.toDataURL(url, {
+    width: 200, margin: 2,
+    color: { dark: '#1A1A18', light: '#FFFFFF' },
+    errorCorrectionLevel: 'M'
+  }, (err, dataUrl) => {
+    if (err) { console.error('QR error:', err); return; }
+    img.src = dataUrl;
+    img.style.width = '160px';
+    img.style.height = '160px';
   });
 }
 
@@ -1423,12 +1433,34 @@ function applyBaseUrl() {
 }
 
 function downloadQR(tableId, tableNum) {
-  const canvas = document.getElementById('qr-' + tableId);
-  if (!canvas) return;
+  const img = document.getElementById('qr-' + tableId);
+  if (!img || !img.src) { alert('QR belum ter-generate. Klik "Simpan & Generate QR" dulu.'); return; }
   const link = document.createElement('a');
-  link.download = `meja-${tableNum}-qr.png`;
-  link.href = canvas.toDataURL('image/png');
+  link.download = 'meja-' + tableNum + '-qr.png';
+  link.href = img.src;
   link.click();
+}
+
+function printQR(tableId, label) {
+  const img = document.getElementById('qr-' + tableId);
+  if (!img || !img.src) { alert('QR belum ter-generate.'); return; }
+  const win = window.open('', '_blank');
+  win.document.write(`
+    <html><head><title>QR ${label}</title>
+    <style>
+      body { font-family: sans-serif; text-align: center; padding: 40px; }
+      img { width: 220px; height: 220px; display: block; margin: 0 auto 12px; }
+      h2 { font-size: 22px; margin-bottom: 6px; }
+      p { font-size: 12px; color: #888; word-break: break-all; }
+    </style></head>
+    <body>
+      <img src="${img.src}">
+      <h2>${label}</h2>
+      <p>Scan untuk memesan</p>
+      <script>window.onload=()=>{window.print();window.close()}<\/script>
+    </body></html>
+  `);
+  win.document.close();
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
